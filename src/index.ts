@@ -6,7 +6,6 @@ import { broker, method, dilation, activity, channel, maxInterval } from './cli'
 
 const recordMessageWorker = db.addMessage;
 const replayMessageWorker = (data: { topic: string; payload: string; wait: number }, callback: (err: string | void) => void) => {
-  console.log('publish with wait', data.topic, data.payload, data.wait);
   client.publish(data.topic, data.payload).then(() => {
     setTimeout(() => callback(), data.wait);
   });
@@ -19,10 +18,15 @@ const q = method === 'record' ? recordQueue : replayQueue;
 
 const dilate = (wait: number, dilation: number) => Math.floor(wait - (wait * dilation / 100));
 
-const populateReplayQueue = async (topic: string, done: () => void) => {
+const populateReplayQueue = async (topic: string, filter: string, done: () => void) => {
   q.drain(done);
 
-  const activity = await db.getActivity(topic);
+  let activity = await db.getActivity(topic);
+
+  if (filter && filter !== '#') {
+    activity = activity.filter(a => a.topic.startsWith(filter.replace('#','')));
+  }
+
   for (let i = 0; i < activity.length; i += 1) {
     const current = activity[i];
     const next = i + 1 <= activity.length ? activity[i + 1] : undefined;
@@ -96,8 +100,8 @@ const exitHandler = async () => {
 
 if (method === 'replay') {
   console.log('REPLAYING', activity);
-  
+
   // Get all records from the db with the activity that matches the topic
-  populateReplayQueue(activity, exitHandler);
+  populateReplayQueue(activity, channel, exitHandler);
 }
   
